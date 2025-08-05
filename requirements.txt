@@ -1,0 +1,33 @@
+# Core packages
+autogen-agentchat
+autogen-ext[ollama]
+pydantic
+python-dotenv
+
+# Data processing and analysis
+pandas
+numpy
+yfinance
+
+
+# API Integrations
+newsapi-python
+requests
+
+# Data visualization (optional but recommended)
+plotly
+matplotlib
+
+# Utilities
+tqdm
+python-dateutil
+
+# Machine Learning and NLP (for sentiment analysis)
+scikit-learn
+nltk
+textblob
+
+# Async support
+
+asyncio
+
