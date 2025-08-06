@@ -1,11 +1,12 @@
 import sqlite3
 import os
 import pandas as pd
+from datetime import datetime
 
 class databases:
-    def __init__(self, db_path='./databse'):
+    def __init__(self, db_path='./database'):
         self.db_path = db_path
-        self.db_name = 'databse.db'
+        self.db_name = 'database.db'
         self.conn = sqlite3.connect(os.path.join(self.db_path, self.db_name))
 
     def run_query(self, query):
@@ -13,159 +14,101 @@ class databases:
     
     def populate_empty_db(self):
         """
-        Create tables for storing news data from different sources with proper datetime tracking
+        Create a single table for storing news articles with all necessary fields
         """
         cursor = self.conn.cursor()
         
-        # Create news sources table with updated datetime fields
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS news_sources (
-            source_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name VARCHAR(100) NOT NULL,
-            description TEXT,
-            reliability_score FLOAT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Create news articles table with enhanced datetime tracking
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS news_articles (
+        CREATE TABLE IF NOT EXISTS market_news (
             article_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_id INTEGER,
-            title VARCHAR(255) NOT NULL,
-            content TEXT,
-            url VARCHAR(500),
+            source_id TEXT,
+            source_name TEXT NOT NULL,
+            author TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            url TEXT,
+            url_image TEXT,
             published_at TIMESTAMP NOT NULL,
-            fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            sentiment_score FLOAT,
-            symbols TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (source_id) REFERENCES news_sources(source_id)
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-
-        # Create symbols mentioned table with datetime tracking
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS article_symbols (
-            article_id INTEGER,
-            symbol VARCHAR(20),
-            mention_count INTEGER DEFAULT 1,
-            first_mentioned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_mentioned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (article_id, symbol),
-            FOREIGN KEY (article_id) REFERENCES news_articles(article_id)
-        )
-        """)
-
-        # Create sentiment history table with enhanced datetime fields
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sentiment_history (
-            sentiment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol VARCHAR(20),
-            date DATE,
-            analysis_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            sentiment_score FLOAT,
-            article_count INTEGER,
-            period_start TIMESTAMP,
-            period_end TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Add indexes for better query performance
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_date ON news_articles(published_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_fetch ON news_articles(fetched_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sentiment_period ON sentiment_history(period_start, period_end)")
+        
+        # Add index for better query performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_news_date ON market_news(published_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_source_name ON market_news(source_name)")
         
         self.conn.commit()
 
-    def insert_news_source_df(self, df: pd.DataFrame):
+    def insert_news_article(self, article_data: dict):
         """
-        Insert multiple news sources from a DataFrame
+        Insert a single news article from the API response format
         
-        DataFrame columns should include:
-        - name (required)
-        - description (optional)
-        - reliability_score (optional)
+        Args:
+            article_data (dict): News article data in the API response format
         """
         cursor = self.conn.cursor()
         
-        for _, row in df.iterrows():
-            cursor.execute("""
-            INSERT INTO news_sources (
-                name,
-                description,
-                reliability_score
-            ) VALUES (?, ?, ?)
-            """, (
-                row.get('name'),
-                row.get('description'),
-                row.get('reliability_score')
-            ))
+        cursor.execute("""
+        INSERT INTO market_news (
+            source_id,
+            source_name,
+            author,
+            title,
+            description,
+            url,
+            url_image,
+            published_at,
+            content
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            article_data['source'].get('id'),
+            article_data['source'].get('name'),
+            article_data.get('author'),
+            article_data.get('title'),
+            article_data.get('description'),
+            article_data.get('url'),
+            article_data.get('urlToImage'),
+            article_data.get('publishedAt'),
+            article_data.get('content')
+        ))
         
         self.conn.commit()
+        return cursor.lastrowid
 
-    def insert_news_articles_df(self, df: pd.DataFrame):
+    def insert_news_articles_batch(self, articles: list):
         """
-        Insert multiple news articles from a DataFrame
+        Insert multiple news articles in batch
         
-        DataFrame columns should include:
-        - source_id
-        - title
-        - content
-        - url
-        - published_at
-        - sentiment_score
-        - symbols (list or comma-separated string)
+        Args:
+            articles (list): List of article dictionaries in the API response format
         """
         cursor = self.conn.cursor()
         
-        for _, row in df.iterrows():
-            # Handle symbols if they're in list format
-            symbols = row['symbols']
-            if isinstance(symbols, list):
-                symbols = ','.join(symbols)
-                
-            # Insert article
-            cursor.execute("""
-            INSERT INTO news_articles (
-                source_id,
-                title,
-                content,
-                url,
-                published_at,
-                sentiment_score,
-                symbols
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                row['source_id'],
-                row['title'],
-                row['content'],
-                row['url'],
-                row['published_at'],
-                row['sentiment_score'],
-                symbols
-            ))
-            
-            article_id = cursor.lastrowid
-            
-            # Insert symbol mentions
-            if isinstance(row['symbols'], list):
-                symbols_list = row['symbols']
-            else:
-                symbols_list = row['symbols'].split(',')
-                
-            for symbol in symbols_list:
-                cursor.execute("""
-                INSERT INTO article_symbols (
-                    article_id,
-                    symbol,
-                    mention_count
-                ) VALUES (?, ?, 1)
-                """, (article_id, symbol.strip()))
+        values = [(
+            article['source'].get('id'),
+            article['source'].get('name'),
+            article.get('author'),
+            article.get('title'),
+            article.get('description'),
+            article.get('url'),
+            article.get('urlToImage'),
+            article.get('publishedAt'),
+            article.get('content')
+        ) for article in articles]
+        
+        cursor.executemany("""
+        INSERT INTO market_news (
+            source_id,
+            source_name,
+            author,
+            title,
+            description,
+            url,
+            url_image,
+            published_at,
+            content
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, values)
         
         self.conn.commit()
