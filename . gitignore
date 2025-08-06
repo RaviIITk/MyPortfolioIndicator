@@ -21,8 +21,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.gitignore
-
+*.gitignore
+*.db
 # Virtual Environment
 venv/
 ENV/
