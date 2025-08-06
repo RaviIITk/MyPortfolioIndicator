@@ -19,19 +19,22 @@ load_dotenv()
 
 
 
-class tools:
+class tools(databases):
     def __init__(self):
+        # Call parent class constructor with db_path
+        db_path = './database'
+        if not os.path.exists(db_path):
+            os.makedirs(db_path, exist_ok=True)
+        
+        # Initialize parent class (databases)
+        super().__init__(db_path=db_path)
+        
+        # Initialize tools-specific attributes
         self.news_api_key = os.getenv('NEWS_API_KEY')
-        self.database_flag = os.makedirs('./database', exist_ok=True)
-        if self.database_flag:
-            self.db = databases(db_path='./database')
-        else:
-            print('Add databse to the application')
+        self.date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 
-        self.date= (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-
-    def execute_news_api(self,keyword, date,):
-        url = f"https://newsapi.org/v2/everything?q={keyword}&from={date}&sortBy=publishedAt&apiKey={api_key}"
+    def execute_news_api(self,keyword):
+        url = f"https://newsapi.org/v2/everything?q={keyword}&from={self.date}&sortBy=publishedAt&apiKey={api_key}"
         print(url)
 
         response = requests.get(url)
@@ -39,7 +42,7 @@ class tools:
         return response.json()
     
     def load_news_to_databse(self, json):
-        self.db.insert_news_articles_batch(json['articles'])
+        self.insert_news_articles_batch(json['articles'])
     
 
 
